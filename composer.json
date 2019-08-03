@@ -1,0 +1,28 @@
+{
+  "name": "inetstudio/cache",
+  "description": "Package for cache",
+  "homepage": "https://github.com/inetstudio/cache",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Konstantin Bukin",
+      "email": "bukin@inetstudio.ru"
+    }
+  ],
+  "require": {
+    "league/fractal": "^0.17.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "InetStudio\\CachePackage\\Cache\\": "entities/cache/src"
+    }
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "InetStudio\\CachePackage\\Cache\\Providers\\BindingsServiceProvider",
+        "InetStudio\\CachePackage\\Cache\\Providers\\ServiceProvider"
+      ]
+    }
+  }
+}
