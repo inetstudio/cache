@@ -39,7 +39,7 @@ class CacheService implements CacheServiceContract
     /**
      * Кэшируем результаты запросов.
      *
-     * @param  Collection  $items
+     * @param  mixed  $items
      * @param  TransformerAbstract|array  $transformers
      * @param  array  $params
      * @param  array  $additionalCacheKeys
@@ -50,12 +50,16 @@ class CacheService implements CacheServiceContract
      * @throws BindingResolutionException
      */
     public function cacheItems(
-        Collection $items,
+        $items,
         $transformers,
         array $params = [],
         array $additionalCacheKeys = [],
         bool $returnKeys = false
     ): Collection {
+        if (! is_iterable($items)) {
+            $items = collect([$items]);
+        }
+
         $data = [];
 
         if ($transformers instanceof TransformerAbstract) {

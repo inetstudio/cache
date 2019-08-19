@@ -13,7 +13,7 @@ interface CacheServiceContract
     /**
      * Кэшируем результаты запросов.
      *
-     * @param  Collection  $items
+     * @param  mixed  $items
      * @param  TransformerAbstract|array  $transformers
      * @param  array  $params
      * @param  array  $additionalCacheKeys
@@ -22,7 +22,7 @@ interface CacheServiceContract
      * @return Collection
      */
     public function cacheItems(
-        Collection $items,
+        $items,
         $transformers,
         array $params = [],
         array $additionalCacheKeys = [],
