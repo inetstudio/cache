@@ -3,13 +3,13 @@
 namespace InetStudio\CachePackage\Cache\Services\Front;
 
 use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
 use League\Fractal\Manager;
 use Illuminate\Cache\FileStore;
 use Illuminate\Cache\RedisStore;
 use League\Fractal\Resource\Item;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
-use League\Fractal\TransformerAbstract;
 use Illuminate\Contracts\Container\BindingResolutionException;
 use InetStudio\CachePackage\Cache\Contracts\Services\Front\CacheServiceContract;
 
@@ -19,14 +19,24 @@ use InetStudio\CachePackage\Cache\Contracts\Services\Front\CacheServiceContract;
 class CacheService implements CacheServiceContract
 {
     /**
+     * @var
+     */
+    protected $cacheStore;
+
+    /**
      * @var Manager
      */
     protected $manager;
 
     /**
-     * @var
+     * @var array
      */
-    protected $cacheStore;
+    protected $transformers = [];
+
+    /**
+     * @var array
+     */
+    protected $cacheKeys = [];
 
     /**
      * CacheService constructor.
@@ -34,73 +44,196 @@ class CacheService implements CacheServiceContract
     public function __construct()
     {
         $this->cacheStore = Cache::getStore();
+
+        $this->initManager();
+    }
+
+    /**
+     * Инициализируем менеджера трансформации.
+     *
+     * @param  array  $params
+     *
+     * @return Manager
+     *
+     * @throws BindingResolutionException
+     */
+    protected function initManager(array $params = [])
+    {
+        $serializer = app()->make('InetStudio\AdminPanel\Base\Contracts\Serializers\SimpleDataArraySerializerContract');
+
+        $this->manager = new Manager();
+        $this->manager->setSerializer($serializer);
+    }
+
+    /**
+     * Инициализация сервиса.
+     *
+     * @param $transformers
+     * @param $keys
+     * @param  array  $params
+     *
+     * @return CacheService
+     *
+     * @throws BindingResolutionException
+     */
+    public function init($transformers, $keys, array $params = []): self
+    {
+        $this->setTransformers($transformers);
+        $this->setCacheKeys($keys);
+        $this->parseParams($params);
+
+        return $this;
+    }
+
+    /**
+     * Устанавливаем трансформеры для обработки.
+     *
+     * @param  mixed $transformer
+     *
+     * @return CacheService
+     *
+     * @throws BindingResolutionException
+     */
+    public function setTransformers($transformer): self
+    {
+        $transformers = (! is_iterable($transformer)) ? collect([$transformer]) : $transformer;
+
+        if (count($transformers) == 0) {
+            return $this;
+        }
+
+        $this->transformers = [];
+
+        foreach ($transformers ?? [] as $key => $transformer) {
+            $transformer = (is_string($transformer)) ? app()->make($transformer) : $transformer;
+            $key = is_string($key) ? $key : '*';
+
+            $this->transformers[$key] = [
+                'transformer' => $transformer,
+                'key' => md5(get_class($transformer)),
+            ];
+        }
+
+        return $this;
+    }
+
+    /**
+     * Возвращаем трансформер для объекта.
+     *
+     * @param $item
+     *
+     * @return array|null
+     */
+    protected function getTransformerForItem($item): ?array
+    {
+        if (isset($this->transformers['*'])) {
+            return $this->transformers['*'];
+        }
+
+        $interfaces = class_implements($item);
+
+        $interface = array_intersect(array_keys($this->transformers), $interfaces);
+        $interface = (count($interface) > 0) ? array_shift($interface) : null;
+
+        if ($interface) {
+            return $this->transformers[$interface];
+        }
+
+        $class = get_class($item);
+
+        if (isset($this->transformers[$class])) {
+            return $this->transformers[$class];
+        }
+
+        return null;
+    }
+
+    /**
+     * Устанавливаем дополнительные ключи кеширования.
+     *
+     * @param $keys
+     *
+     * @return CacheService
+     */
+    public function setCacheKeys($keys): self
+    {
+        $keys = (! is_iterable($keys)) ? collect([$keys])->toArray() : $keys;
+
+        if (count($keys) == 0) {
+            return $this;
+        }
+
+        $this->cacheKeys = $keys;
+
+        return $this;
+    }
+
+    /**
+     * Обрабатываем параметры выборки.
+     *
+     * @param  array  $params
+     *
+     * @return CacheService
+     */
+    public function parseParams(array $params = []): self
+    {
+        $includes = Arr::get($params, 'includes', []);
+        $this->manager->parseIncludes($includes);
+
+        $cacheKeys = Arr::get($params, 'cache.keys', []);
+        $this->cacheKeys = array_unique(array_merge($this->cacheKeys, $cacheKeys));
+
+        $params = Arr::only($params, ['columns', 'includes']);
+        $params = Arr::sortRecursive($params);
+
+        foreach ($this->transformers as $model => $transformerData) {
+            $this->transformers[$model]['key'] = md5(get_class($transformerData['transformer']).json_encode($params));
+        }
+
+        return $this;
     }
 
     /**
      * Кэшируем результаты запросов.
      *
      * @param  mixed  $items
-     * @param  TransformerAbstract|array  $transformers
-     * @param  array  $params
-     * @param  array  $additionalCacheKeys
      * @param  bool  $returnKeys
      *
      * @return Collection
      *
      * @throws BindingResolutionException
      */
-    public function cacheItems(
-        $items,
-        $transformers,
-        array $params = [],
-        array $additionalCacheKeys = [],
-        bool $returnKeys = false
-    ): Collection {
+    public function cacheItems($items, bool $returnKeys = false): Collection
+    {
         if (! is_iterable($items)) {
             $items = collect([$items]);
         }
 
         $data = [];
 
-        if ($transformers instanceof TransformerAbstract) {
-            $transformer = $transformers;
-            $transformCacheKey = md5(get_class($transformer).json_encode(Arr::only($params, ['columns', 'includes'])));
-        }
-
-        $manager = $this->getManager($params);
-
         foreach ($items as $item) {
             if ($item) {
-                if (is_array($transformers)) {
-                    $interfaces = class_implements($item);
+                $transformerData = $this->getTransformerForItem($item);
 
-                    $interface = array_intersect(array_keys($transformers), $interfaces);
-                    $interface = (count($interface) > 0) ? array_shift($interface) : null;
-
-                    if (! $interface) {
-                        continue;
-                    }
-
-                    $transformer = $transformers[$interface];
-
-                    $transformCacheKey = md5(get_class($transformer).json_encode(Arr::only($params, ['columns', 'includes'])));
+                if (! $transformerData) {
+                    continue;
                 }
 
                 $objectKey = md5(get_class($item).$item->id);
 
-                $cacheKey = 'transform_'.$transformCacheKey.'_'.$objectKey;
+                $cacheKey = 'transform_'.$transformerData['key'].'_'.$objectKey;
 
                 $groupCacheKey = 'cacheKeys_'.$objectKey;
 
-                $cacheKeys = array_merge([$cacheKey], $additionalCacheKeys);
+                $cacheKeys = array_merge([$cacheKey], $this->cacheKeys);
 
                 $this->addKeysToCacheGroup($groupCacheKey, $cacheKeys);
-                $transformer->addCacheKeys($cacheKeys);
+                $transformerData['transformer']->addCacheKeys($cacheKeys);
 
-                $cachedItem = Cache::rememberForever($cacheKey, function () use ($item, $transformer, $manager) {
-                    $resource = new Item($item, $transformer);
+                $cachedItem = Cache::rememberForever($cacheKey, function () use ($item, $transformerData) {
+                    $resource = new Item($item, $transformerData['transformer']);
 
-                    return $manager->createData($resource)->toArray();
+                    return $this->manager->createData($resource)->toArray();
                 });
 
                 $data[] = ($returnKeys) ? $cacheKey : $cachedItem;
@@ -113,12 +246,16 @@ class CacheService implements CacheServiceContract
     /**
      * Получаем кэшированные данные по ключам.
      *
-     * @param  Collection  $keys
+     * @param  mixed  $keys
      *
      * @return Collection
      */
-    public function getCachedItems(Collection $keys): Collection
+    public function getCachedItems($keys): Collection
     {
+        if (! is_iterable($keys)) {
+            $items = collect([$keys]);
+        }
+
         $items = collect();
 
         if ($keys->count() == 0) {
@@ -141,12 +278,18 @@ class CacheService implements CacheServiceContract
      * Добавляем ключи в группу.
      *
      * @param  string  $groupKey
-     * @param  array  $additionalCacheKeys
+     * @param  mixed  $additionalCacheKeys
+     *
+     * @return CacheService
      */
-    public function addKeysToCacheGroup(string $groupKey, array $additionalCacheKeys): void
+    public function addKeysToCacheGroup(string $groupKey, $additionalCacheKeys = []): self
     {
+        if (! is_iterable($additionalCacheKeys)) {
+            $additionalCacheKeys = collect([$additionalCacheKeys])->toArray();
+        }
+
         if (empty($additionalCacheKeys)) {
-            return;
+            return $this;
         }
 
         $keys = [];
@@ -156,7 +299,7 @@ class CacheService implements CacheServiceContract
         }
 
         if (empty(array_diff($additionalCacheKeys, $keys))) {
-            return;
+            return $this;
         }
 
         $keys = array_unique(array_merge($keys, $additionalCacheKeys));
@@ -169,28 +312,36 @@ class CacheService implements CacheServiceContract
             Cache::forget($groupKey);
             Cache::forever($groupKey, $keys);
         }
+
+        return $this;
     }
 
     /**
      * Очищаем кэш по ключам.
      *
      * @param $item
+     *
+     * @return CacheService
      */
-    public function clearCacheKeys($item): void
+    public function clearCacheKeys($item): self
     {
         if ($item) {
             $cacheKey = 'cacheKeys_'.md5(get_class($item).$item->id);
 
             $this->clearCacheGroup($cacheKey);
         }
+
+        return $this;
     }
 
     /**
      * Очищаем кэш по группе ключей.
      *
      * @param  string  $groupKey
+     *
+     * @return CacheService
      */
-    public function clearCacheGroup(string $groupKey): void
+    public function clearCacheGroup(string $groupKey): self
     {
         if ($this->cacheStore instanceof RedisStore) {
             $prefix = $this->cacheStore->getPrefix();
@@ -203,6 +354,10 @@ class CacheService implements CacheServiceContract
                 $setMemberKey = str_replace($prefix, '', $setMemberKey);
                 $cacheKey = Cache::get($setMemberKey);
 
+                if (Str::start($cacheKey, 'group_')) {
+                    $this->clearCacheGroup($cacheKey);
+                }
+
                 Cache::forget($cacheKey);
             }
 
@@ -213,35 +368,17 @@ class CacheService implements CacheServiceContract
             $keys = Cache::get($groupKey, []);
 
             foreach ($keys as $key) {
+                if (Str::start($key, 'group_')) {
+                    $this->clearCacheGroup($key);
+                }
+
                 Cache::forget($key);
             }
 
             Cache::forget($groupKey);
         }
-    }
 
-    /**
-     * Инициализируем менеджера трансформации.
-     *
-     * @param  array  $params
-     *
-     * @return Manager
-     *
-     * @throws BindingResolutionException
-     */
-    protected function getManager(array $params = [])
-    {
-        if (! $this->manager) {
-            $serializer = app()->make('InetStudio\AdminPanel\Base\Contracts\Serializers\SimpleDataArraySerializerContract');
-
-            $includes = Arr::get($params, 'includes', []);
-
-            $this->manager = new Manager();
-            $this->manager->setSerializer($serializer);
-            $this->manager->parseIncludes($includes);
-        }
-
-        return $this->manager;
+        return $this;
     }
 
     /**
@@ -272,5 +409,46 @@ class CacheService implements CacheServiceContract
         }
 
         return $keys;
+    }
+
+    /**
+     * Генерируем ключ для кеширования.
+     *
+     * @param  bool  group
+     * @param  mixed  $additionalData
+     * @param  int  $level
+     *
+     * @return string
+     */
+    public static function generateCacheKey($group = false, $additionalData = '', int $level = 1): string
+    {
+        $caller = debug_backtrace();
+
+        $last = $caller[$level];
+
+        $class = str_replace('\\', '_', $last['class']);
+        $method = $last['function'];
+        $arguments = md5(json_encode($additionalData).(($group) ? '' : json_encode($last['args'])));
+
+        return (($group) ? 'group_' : '').$class.'_'.$method.'_'.$arguments;
+    }
+
+    /**
+     * Получаем ключ по параметрам.
+     *
+     * @param $class
+     * @param  string  $method
+     * @param  array  $arguments
+     * @param  bool  $group
+     * @param  mixed  $additionalData
+     *
+     * @return string
+     */
+    public static function getCacheKeyByClassAndMethod($class, string $method, array $arguments = [], bool $group = false, $additionalData = ''): string
+    {
+        $class = str_replace('\\', '_', get_class($class));
+        $arguments = md5(json_encode($additionalData).(($group) ? '' : json_encode($arguments)));
+
+        return (($group) ? 'group_' : '').$class.'_'.$method.'_'.$arguments;
     }
 }
