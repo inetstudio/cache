@@ -221,7 +221,9 @@ class CacheService implements CacheServiceContract
 
                 $objectKey = md5(get_class($item).$item->id);
 
-                $cacheKey = 'transform_'.$transformerData['key'].'_'.$objectKey;
+                $objectDataKey = md5(json_encode($item->getAttributes()).json_encode($item->getRelations()));
+
+                $cacheKey = 'transform_'.$transformerData['key'].'_'.$objectDataKey.'_'.$objectKey;
 
                 $groupCacheKey = 'cacheKeys_'.$objectKey;
 
