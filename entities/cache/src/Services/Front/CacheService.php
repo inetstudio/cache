@@ -40,6 +40,8 @@ class CacheService implements CacheServiceContract
 
     /**
      * CacheService constructor.
+     *
+     * @throws BindingResolutionException
      */
     public function __construct()
     {
@@ -51,13 +53,9 @@ class CacheService implements CacheServiceContract
     /**
      * Инициализируем менеджера трансформации.
      *
-     * @param  array  $params
-     *
-     * @return Manager
-     *
      * @throws BindingResolutionException
      */
-    protected function initManager(array $params = [])
+    protected function initManager()
     {
         $serializer = app()->make('InetStudio\AdminPanel\Base\Contracts\Serializers\SimpleDataArraySerializerContract');
 
@@ -89,12 +87,13 @@ class CacheService implements CacheServiceContract
      * Устанавливаем трансформеры для обработки.
      *
      * @param  mixed $transformer
+     * @param  mixed $additionalDataForKeys
      *
      * @return CacheService
      *
      * @throws BindingResolutionException
      */
-    public function setTransformers($transformer): self
+    public function setTransformers($transformer, $additionalDataForKeys = ''): self
     {
         $transformers = (! is_iterable($transformer)) ? collect([$transformer]) : $transformer;
 
@@ -110,7 +109,7 @@ class CacheService implements CacheServiceContract
 
             $this->transformers[$key] = [
                 'transformer' => $transformer,
-                'key' => md5(get_class($transformer)),
+                'key' => md5(get_class($transformer).json_encode($additionalDataForKeys)),
             ];
         }
 
@@ -187,7 +186,7 @@ class CacheService implements CacheServiceContract
         $params = Arr::sortRecursive($params);
 
         foreach ($this->transformers as $model => $transformerData) {
-            $this->transformers[$model]['key'] = md5(get_class($transformerData['transformer']).json_encode($params));
+            $this->transformers[$model]['key'] = md5($transformerData['key'].json_encode($params));
         }
 
         return $this;

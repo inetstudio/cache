@@ -17,10 +17,30 @@ interface CacheServiceContract
      * @param $transformers
      * @param $keys
      * @param  array  $params
-     *
-     * @return CacheService
      */
     public function init($transformers, $keys, array $params = []);
+
+    /**
+     * Устанавливаем трансформеры для обработки.
+     *
+     * @param  mixed $transformer
+     * @param  mixed $additionalDataForKeys
+     */
+    public function setTransformers($transformer, $additionalDataForKeys = '');
+
+    /**
+     * Устанавливаем дополнительные ключи кеширования.
+     *
+     * @param $keys
+     */
+    public function setCacheKeys($keys);
+
+    /**
+     * Обрабатываем параметры выборки.
+     *
+     * @param  array  $params
+     */
+    public function parseParams(array $params = []);
 
     /**
      * Кэшируем результаты запросов.
