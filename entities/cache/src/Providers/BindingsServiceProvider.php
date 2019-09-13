@@ -15,6 +15,7 @@ class BindingsServiceProvider extends ServiceProvider implements DeferrableProvi
      */
     public $bindings = [
         'InetStudio\CachePackage\Cache\Contracts\Console\Commands\GenerateCacheCommandContract' => 'InetStudio\CachePackage\Cache\Console\Commands\GenerateCacheCommand',
+        'InetStudio\CachePackage\Cache\Contracts\Serializers\CacheDataArraySerializerContract' => 'InetStudio\CachePackage\Cache\Serializers\CacheDataArraySerializer',
         'InetStudio\CachePackage\Cache\Contracts\Services\Front\CacheServiceContract' => 'InetStudio\CachePackage\Cache\Services\Front\CacheService',
     ];
 

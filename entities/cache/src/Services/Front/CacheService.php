@@ -5,6 +5,8 @@ namespace InetStudio\CachePackage\Cache\Services\Front;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use League\Fractal\Manager;
+use RecursiveArrayIterator;
+use RecursiveIteratorIterator;
 use Illuminate\Cache\FileStore;
 use Illuminate\Cache\RedisStore;
 use League\Fractal\Resource\Item;
@@ -254,7 +256,7 @@ class CacheService implements CacheServiceContract
     public function getCachedItems($keys): Collection
     {
         if (! is_iterable($keys)) {
-            $items = collect([$keys]);
+            $keys = collect([$keys]);
         }
 
         $items = collect();
@@ -272,7 +274,99 @@ class CacheService implements CacheServiceContract
             }
         }
 
+        $items = $items->map(function ($item) {
+            return (is_array($item)) ? $this->prepareItem($item) : $item;
+        });
+
         return $items;
+    }
+
+    /**
+     * Prepare cached item.
+     *
+     * @param  array  $item
+     *
+     * @return array
+     */
+    protected function prepareItem(array $item)
+    {
+        $cachedKeys = $this->getAllCachedKeys($item);
+
+        $cachedItems = [];
+
+        if (! empty($cachedKeys)) {
+            if ($this->cacheStore instanceof RedisStore) {
+                $cachedItems = Cache::many($cachedKeys);
+            } else {
+                foreach ($cachedKeys as $key) {
+                    $cachedValue = Cache::get($key, []);
+                    $cachedItems[$key] = $cachedValue;
+                }
+            }
+        }
+
+        return $this->replaceCachedData($item, $cachedItems);
+    }
+
+    /**
+     * Get all cache_data values.
+     *
+     * @param  array  $array
+     *
+     * @return array
+     */
+    protected function getAllCachedKeys(array $array)
+    {
+        $keys = [];
+
+        foreach ($array as $key => $value) {
+            if ($key === 'cached_data') {
+                $keys[] = $value;
+            }
+
+            if (is_array($value)) {
+                $keys = array_merge($keys, $this->getAllCachedKeys($value));
+            }
+        }
+
+        return array_unique(array_filter($keys));
+    }
+
+    /**
+     * Repalce cache_data keys with data.
+     *
+     * @param $item
+     * @param $cachedItems
+     *
+     * @return array
+     */
+    protected function replaceCachedData($item, $cachedItems)
+    {
+        $result = [];
+
+        foreach ($item as $field => $value) {
+            if ($field == 'cached_data' && $value == '') {
+                continue;
+            }
+
+            if (is_array($value)) {
+                $replacedData = $this->replaceCachedData($value, $cachedItems);
+
+                if ($field === 'items_data') {
+                    $result = $result + $replacedData;
+                } else {
+                    $result[$field] = $replacedData;
+                }
+            } else {
+                if (is_string($value) && isset($cachedItems[$value])) {
+                    $result = $result + $cachedItems[$value];
+                } else {
+                    $result[$field] = $value;
+                }
+            }
+        }
+
+        return $result;
     }
 
     /**
