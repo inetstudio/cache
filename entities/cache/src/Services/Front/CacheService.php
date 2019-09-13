@@ -201,8 +201,6 @@ class CacheService implements CacheServiceContract
      * @param  bool  $returnKeys
      *
      * @return Collection
-     *
-     * @throws BindingResolutionException
      */
     public function cacheItems($items, bool $returnKeys = false): Collection
     {
