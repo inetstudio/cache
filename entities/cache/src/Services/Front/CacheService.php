@@ -5,8 +5,6 @@ namespace InetStudio\CachePackage\Cache\Services\Front;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use League\Fractal\Manager;
-use RecursiveArrayIterator;
-use RecursiveIteratorIterator;
 use Illuminate\Cache\FileStore;
 use Illuminate\Cache\RedisStore;
 use League\Fractal\Resource\Item;
@@ -59,7 +57,7 @@ class CacheService implements CacheServiceContract
      */
     protected function initManager()
     {
-        $serializer = app()->make('InetStudio\AdminPanel\Base\Contracts\Serializers\SimpleDataArraySerializerContract');
+        $serializer = app()->make('InetStudio\CachePackage\Cache\Contracts\Serializers\CacheDataArraySerializerContract');
 
         $this->manager = new Manager();
         $this->manager->setSerializer($serializer);
