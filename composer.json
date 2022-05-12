@@ -9,9 +9,6 @@
       "email": "bukin@inetstudio.ru"
     }
   ],
-  "require": {
-    "inetstudio/admin-panel": "^8.0"
-  },
   "autoload": {
     "psr-4": {
       "InetStudio\\CachePackage\\Cache\\": "entities/cache/src"
