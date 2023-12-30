@@ -19,7 +19,7 @@ class CacheDataArraySerializer extends DataArraySerializer implements CacheDataA
      *
      * @return array
      */
-    public function collection($resourceKey, array $data)
+    public function collection(?string $resourceKey, array $data): array
     {
         if ($resourceKey == 'cache') {
             $preparedData = [];
@@ -45,7 +45,7 @@ class CacheDataArraySerializer extends DataArraySerializer implements CacheDataA
      *
      * @return array
      */
-    public function item($resourceKey, array $data)
+    public function item(?string $resourceKey, array $data): array
     {
         if ($resourceKey == 'cache') {
             $data = $this->prepareData($data);
@@ -59,7 +59,7 @@ class CacheDataArraySerializer extends DataArraySerializer implements CacheDataA
      *
      * @return array
      */
-    public function null()
+    public function null(): ?array
     {
         return [];
     }
